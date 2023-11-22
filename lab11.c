@@ -32,7 +32,7 @@ struct core_queues *cpu_cores[NUM_CPU]; // create N struct queues; each represen
 
 // thread functions
 void *producer_thread_function(void *arg);
-void *consumer_thread_function(void *arg);
+void *cpu_thread_function(void *arg);
 
 // generate random numbers between [min, max] range
 int generate_int(int min, int max){
@@ -46,7 +46,7 @@ int main(){
 
     void *thread_return;                      // the value returned at exit call
     pthread_t producer_thread;                // producer thread
-    pthread_t consumer_threads[NUM_CPU]; // array of consumer threads
+    pthread_t cpu_threads[NUM_CPU]; // array of consumer threads (cpus)
 
     // init mutex lock
     if(pthread_mutex_init(&mutex_lock, NULL) != 0) {perror("Mutex initialization failed"); exit(EXIT_FAILURE);}
@@ -59,7 +59,7 @@ int main(){
     for(int thread_index = 0; thread_index < NUM_CPU; thread_index++){
 
         // cons attr
-        pthread_t c_thread = consumer_threads[thread_index];
+        pthread_t c_thread = cpu_threads[thread_index];
         pthread_attr_t c_thread_attr; // consumer thread's attributes
         void *consumer_args = thread_index;
 
@@ -68,7 +68,7 @@ int main(){
         pthread_attr_setdetachstate(&c_thread_attr, PTHREAD_CREATE_DETACHED); // set it in a detached state; dont wait for anything
 
         // create consumer thread
-        if(pthread_create(&c_thread, &c_thread_attr, consumer_thread_function, &consumer_args) != 0) {perror("Thread creation failed"); exit(EXIT_FAILURE);}
+        if(pthread_create(&c_thread, &c_thread_attr, cpu_thread_function, &consumer_args) != 0) {perror("Thread creation failed"); exit(EXIT_FAILURE);}
 
         // free attribute resources
         (void) pthread_attr_destroy(&c_thread_attr);
@@ -91,4 +91,32 @@ int main(){
     printf("$$term$$\n");
 
     return 0;
+}
+
+// producer thread
+void *producer_thread_function(void *arg){
+
+    printf("[PRODUCER_ID_%lu]: thread function invoked\n", pthread_self());
+    //printf("[PRODUCER_ID_%lu]: generating %d PCB...\n", pthread_self(), NUM_PCB_GENERATE);
+
+    // generate random pcbs
+    pthread_mutex_lock(&mutex_lock);
+
+
+
+    for(int i = 0; i < NUM_PCB_GENERATE; i++){
+        t_buffers[i] = (struct process_information *)malloc(sizeof(struct process_information));
+        struct process_information *pcb = t_buffers[i];
+
+        pcb->PID = generate_int(0, 1000);
+        pcb->STATIC_PRIORITY = 120;
+        pcb->DYNAMIC_PRIORITY = pcb->STATIC_PRIORITY;
+        pcb->REMAIN_TIME = generate_int(5, 20) * 1000; // milliseconds
+        pcb->TIME_SLICE = 0;
+        pcb->ACCU_TIME_SLICE = 0;
+        pcb->LAST_CPU = 0;
+    }
+    pthread_mutex_unlock(&mutex_lock);
+
+    pthread_exit(NULL);
 }
