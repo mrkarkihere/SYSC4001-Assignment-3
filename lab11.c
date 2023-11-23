@@ -1,5 +1,7 @@
 /** NOTE **/
 
+// add insertion sort for priorities within an array
+
 // need to do the new calculation bullshits
 // make sure to end proccesses at the right time -> some checks with the number
 // re-add the correct csv file, not the short one
@@ -94,8 +96,7 @@ int find_index(struct process_information *queue)
 int find_ready_index(struct process_information *queue){
     for (int i = 0; i < MAX_QUEUE_PROCESS; i++)
     {
-        if (queue->PID > 0)
-        {
+        if (queue->PID > 0){
             return i;
         }
     }
@@ -198,14 +199,14 @@ void *producer_thread_function()
         int result = parse_csv_line(file, &process_data_copy);
         if (result == 1)
         {
-            // put process in this designated queue
-            pthread_mutex_lock(&mutex_lock);
 
             // if i can put in any cpu then pick one at random
             if (process_data_copy.cpu_affinity == -1)
             {
                 process_data_copy.cpu_affinity = generate_int(0, 3);
             }
+
+            pthread_mutex_lock(&mutex_lock);
 
             // pick a CPU; pick a queue; pick an index in queue
             int ready_queue = pick_ready_queue(process_data_copy.priority);        // R0, R1, or R3
@@ -243,6 +244,9 @@ void *producer_thread_function()
             running_processes++;
 
             pthread_mutex_unlock(&mutex_lock);
+
+            // "To demonstrate the effect of the producer/consumer solution..." -> add a little sleep
+            usleep(generate_int(100, 600)); // sleep 100us-600us per each read
         }
         else
         {
