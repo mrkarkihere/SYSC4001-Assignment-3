@@ -1,9 +1,8 @@
-/** NOTE **/
-
-// need to do the new calculation bullshits
-// make sure to end proccesses at the right time -> some checks with the number
-// re-add the correct csv file, not the short one
-// change scheduling depending on enum thing
+/**
+ * @file lab11.c
+ * @author Arun Karki
+ * @date 2023-11-23
+ */
 
 #include <stdio.h>
 #include <unistd.h>
