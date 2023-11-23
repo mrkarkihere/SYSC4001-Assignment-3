@@ -14,14 +14,6 @@
 #define NUM_CPU 4             // number of consumer threads
 #define MAX_QUEUE_PROCESS 100 // max of 100 processes per queue
 
-// scheduling policies
-enum sched_policy
-{
-    RR,
-    FIFO,
-    NORMAL,
-};
-
 // basic process information
 struct process_information
 {
@@ -34,7 +26,7 @@ struct process_information
     int LAST_CPU;                   // the thread id that the process last ran
     int EXECUTION_TIME;             // calculated t`otal execution time for the process
     int CPU_AFFINITY;               // which CPU does the process want
-    enum sched_policy SCHED_POLICY; /* scheduling policy used for process */
+    enum SchedulingType SCHED_POLICY; /* scheduling policy used for process */
 };
 
 // ready queue structure
@@ -48,7 +40,8 @@ struct core_queues
 // globals
 pthread_mutex_t mutex_lock;            // lock to do CS
 struct core_queues cpu_cores[NUM_CPU]; // create N struct queues; each represents 1 core
-int running_processes;                 // TESTING: use this to stop the program once 0 processes are running
+int running_processes = 0;                 // TESTING: use this to stop the program once 0 processes are running
+
 
 // thread functions
 void *producer_thread_function();
@@ -114,7 +107,6 @@ int find_ready_index(struct process_information *queue)
 
 int main()
 {
-    running_processes = 1; // to start loop initially
     /* one thread = producer, multi-threads = consumers */
     srand(time(NULL));
 
@@ -135,6 +127,8 @@ int main()
         perror("Thread creation failed");
         exit(EXIT_FAILURE);
     }
+
+    usleep(100); // give producer a chance to produce before consuming for loop
 
     // create consumer threads
     for (int thread_index = 0; thread_index < NUM_CPU; thread_index++)
@@ -242,7 +236,7 @@ void *producer_thread_function()
             pcb->PID = process_data_copy.pid;                  // generate_int(0, 1000);
             pcb->STATIC_PRIORITY = process_data_copy.priority; // 120;
             pcb->DYNAMIC_PRIORITY = pcb->STATIC_PRIORITY;
-            pcb->REMAIN_TIME = process_data_copy.execution_time; // generate_int(5, 20) * 1000; // milliseconds
+            pcb->REMAIN_TIME = 50;//process_data_copy.execution_time; // generate_int(5, 20) * 1000; // milliseconds
             pcb->TIME_SLICE = 0;
             pcb->ACCU_TIME_SLICE = 0;
             pcb->LAST_CPU = 0;
@@ -306,6 +300,7 @@ void *cpu_thread_function(void *arg)
 
         // lock mutex and enter critical section
         pthread_mutex_lock(&mutex_lock);
+
         int time_quantum; // in millseconds
 
         // calculate time quantum
@@ -317,12 +312,6 @@ void *cpu_thread_function(void *arg)
         {
             time_quantum = (140 - pcb->STATIC_PRIORITY) * 5;
         }
-
-        /*
-            See the formula in Section I for dynamic priority calculation. For this lab, a bonus of 10 will be assigned to
-            a process if the simulated execution time < current time slice. Otherwise, i.e., simulation execution =
-            current time slice, the bonus value will be 5.
-        */
 
         // calculate dp
         int bonus = (pcb->EXECUTION_TIME < pcb->TIME_SLICE) ? 10 : 5; //= generate_int(0, 10);
@@ -355,7 +344,7 @@ void *cpu_thread_function(void *arg)
         printf("\tLAST_CPU = %d\n", pcb->LAST_CPU);
         printf("\tEXECUTION_TIME = %d\n", pcb->EXECUTION_TIME);
         printf("\tCPU_AFFINITY = %d\n", pcb->CPU_AFFINITY);
-        printf("\tSCHED_POLICY = %s\n}\n", pcb->SCHED_POLICY);
+        printf("\tSCHED_POLICY = %d\n}\n", pcb->SCHED_POLICY);
 
         // if 0 time is remaining then process has ended
         if (pcb->REMAIN_TIME == 0)
