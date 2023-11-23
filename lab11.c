@@ -1,7 +1,5 @@
 /** NOTE **/
 
-// add insertion sort for priorities within an array
-
 // need to do the new calculation bullshits
 // make sure to end proccesses at the right time -> some checks with the number
 // re-add the correct csv file, not the short one
@@ -16,6 +14,13 @@
 #define NUM_CPU 4             // number of consumer threads
 #define MAX_QUEUE_PROCESS 100 // max of 100 processes per queue
 
+// scheduling policies
+enum sched_policy {
+    RR,
+    FIFO,
+    NORMAL,
+};
+
 // basic process information
 struct process_information
 {
@@ -28,6 +33,7 @@ struct process_information
     int LAST_CPU;         // the thread id that the process last ran
     int EXECUTION_TIME; // calculated t`otal execution time for the process
     int CPU_AFFINITY; // which CPU does the process want
+    enum sched_policy SCHED_POLICY; /* scheduling policy used for process */
 };
 
 // ready queue structure
@@ -240,6 +246,7 @@ void *producer_thread_function()
             pcb->LAST_CPU = 0;
             pcb->EXECUTION_TIME = process_data_copy.execution_time;
             pcb->CPU_AFFINITY = process_data_copy.cpu_affinity;
+            pcb->SCHED_POLICY = process_data_copy.policy;
 
             running_processes++;
 
@@ -332,7 +339,8 @@ void *cpu_thread_function(void *arg)
         printf("\tACCU_TIME_SLICE = %d\n", pcb->ACCU_TIME_SLICE);
         printf("\tLAST_CPU = %d\n", pcb->LAST_CPU);
         printf("\tEXECUTION_TIME = %d\n", pcb->EXECUTION_TIME);
-        printf("\tCPU_AFFINITY = %d\n}\n", pcb->CPU_AFFINITY);  
+        printf("\tCPU_AFFINITY = %d\n", pcb->CPU_AFFINITY);  
+        printf("\tSCHED_POLICY = %s\n}\n", pcb->SCHED_POLICY);  
         
         // TESTING: just assume its done 
         pcb->PID = 0;
