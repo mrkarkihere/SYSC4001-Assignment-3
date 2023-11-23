@@ -175,7 +175,7 @@ void *producer_thread_function(){
             pcb->PID = process_data_copy.pid;                  // generate_int(0, 1000);
             pcb->STATIC_PRIORITY = process_data_copy.priority; // 120;
             pcb->DYNAMIC_PRIORITY = pcb->STATIC_PRIORITY;
-            pcb->REMAIN_TIME = 50;//process_data_copy.execution_time; // generate_int(5, 20) * 1000; // milliseconds
+            pcb->REMAIN_TIME = process_data_copy.execution_time; // generate_int(5, 20) * 1000; // milliseconds
             pcb->TIME_SLICE = 0;
             pcb->ACCU_TIME_SLICE = 0;
             pcb->LAST_CPU = 0;
