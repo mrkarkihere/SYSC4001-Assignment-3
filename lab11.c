@@ -15,7 +15,8 @@
 #define MAX_QUEUE_PROCESS 100 // max of 100 processes per queue
 
 // scheduling policies
-enum sched_policy {
+enum sched_policy
+{
     RR,
     FIFO,
     NORMAL,
@@ -24,15 +25,15 @@ enum sched_policy {
 // basic process information
 struct process_information
 {
-    int PID;              // pid generated
-    int STATIC_PRIORITY;  // default = 120; shud be b/w 100-139, lower # = higher priority
-    int DYNAMIC_PRIORITY; // changing priority value
-    int REMAIN_TIME;      // remainder execution time; initially b/w 5-20 secs
-    int TIME_SLICE;       // calculated time slice value
-    int ACCU_TIME_SLICE;  // accumulated time slice
-    int LAST_CPU;         // the thread id that the process last ran
-    int EXECUTION_TIME; // calculated t`otal execution time for the process
-    int CPU_AFFINITY; // which CPU does the process want
+    int PID;                        // pid generated
+    int STATIC_PRIORITY;            // default = 120; shud be b/w 100-139, lower # = higher priority
+    int DYNAMIC_PRIORITY;           // changing priority value
+    int REMAIN_TIME;                // remainder execution time; initially b/w 5-20 secs
+    int TIME_SLICE;                 // calculated time slice value
+    int ACCU_TIME_SLICE;            // accumulated time slice
+    int LAST_CPU;                   // the thread id that the process last ran
+    int EXECUTION_TIME;             // calculated t`otal execution time for the process
+    int CPU_AFFINITY;               // which CPU does the process want
     enum sched_policy SCHED_POLICY; /* scheduling policy used for process */
 };
 
@@ -47,7 +48,7 @@ struct core_queues
 // globals
 pthread_mutex_t mutex_lock;            // lock to do CS
 struct core_queues cpu_cores[NUM_CPU]; // create N struct queues; each represents 1 core
-int running_processes; // TESTING: use this to stop the program once 0 processes are running
+int running_processes;                 // TESTING: use this to stop the program once 0 processes are running
 
 // thread functions
 void *producer_thread_function();
@@ -99,16 +100,17 @@ int find_index(struct process_information *queue)
 }
 
 // find the first index of a ready process
-int find_ready_index(struct process_information *queue){
+int find_ready_index(struct process_information *queue)
+{
     for (int i = 0; i < MAX_QUEUE_PROCESS; i++)
     {
-        if (queue->PID > 0){
+        if (queue->PID > 0)
+        {
             return i;
         }
     }
     return -1;
 }
-
 
 int main()
 {
@@ -237,10 +239,10 @@ void *producer_thread_function()
             }
 
             // initiate pcb
-            pcb->PID = process_data_copy.pid; //generate_int(0, 1000);
-            pcb->STATIC_PRIORITY = process_data_copy.priority;//120;
+            pcb->PID = process_data_copy.pid;                  // generate_int(0, 1000);
+            pcb->STATIC_PRIORITY = process_data_copy.priority; // 120;
             pcb->DYNAMIC_PRIORITY = pcb->STATIC_PRIORITY;
-            pcb->REMAIN_TIME = generate_int(5, 20) * 1000; // milliseconds
+            pcb->REMAIN_TIME = process_data_copy.execution_time; // generate_int(5, 20) * 1000; // milliseconds
             pcb->TIME_SLICE = 0;
             pcb->ACCU_TIME_SLICE = 0;
             pcb->LAST_CPU = 0;
@@ -271,11 +273,12 @@ void *cpu_thread_function(void *arg)
 {
     int thread_index = *(int *)arg;
     printf("[CONSUMER_ID_%lu]: thread #%d invoked\n", pthread_self(), thread_index);
-    
+
     struct core_queues *core = &cpu_cores[thread_index];
 
     // while # running processes > 0
-    while(running_processes > 0){
+    while (running_processes > 0)
+    {
 
         // check all queues, in highest priority -> lowest
         struct process_information *pcb;
@@ -284,13 +287,20 @@ void *cpu_thread_function(void *arg)
         int rq2_index = find_ready_index(core->RQ_2);
 
         // find a process to run, if not found, continue loop
-        if(rq0_index > -1){
+        if (rq0_index > -1)
+        {
             pcb = &(core->RQ_0)[rq0_index];
-        }else if(rq1_index > -1){
+        }
+        else if (rq1_index > -1)
+        {
             pcb = &(core->RQ_1)[rq1_index];
-        }else if(rq2_index > -1){
+        }
+        else if (rq2_index > -1)
+        {
             pcb = &(core->RQ_2)[rq2_index];
-        }else{
+        }
+        else
+        {
             continue;
         }
 
@@ -308,10 +318,15 @@ void *cpu_thread_function(void *arg)
             time_quantum = (140 - pcb->STATIC_PRIORITY) * 5;
         }
 
+        /*
+            See the formula in Section I for dynamic priority calculation. For this lab, a bonus of 10 will be assigned to
+            a process if the simulated execution time < current time slice. Otherwise, i.e., simulation execution =
+            current time slice, the bonus value will be 5.
+        */
+
         // calculate dp
-        int DP;
-        int bonus = generate_int(0, 10);
-        DP = pcb->STATIC_PRIORITY - bonus + 5;
+        int bonus = (pcb->EXECUTION_TIME < pcb->TIME_SLICE) ? 10 : 5; //= generate_int(0, 10);
+        int DP = pcb->STATIC_PRIORITY - bonus + 5;
 
         if (DP < 100)
         {
@@ -326,7 +341,7 @@ void *cpu_thread_function(void *arg)
         pcb->TIME_SLICE = time_quantum;
         pcb->REMAIN_TIME = (pcb->REMAIN_TIME - pcb->TIME_SLICE >= 0) ? (pcb->REMAIN_TIME - pcb->TIME_SLICE) : 0;
         pcb->ACCU_TIME_SLICE += pcb->TIME_SLICE;
-        pcb->LAST_CPU = thread_index;//pthread_self();
+        pcb->LAST_CPU = thread_index; // pthread_self();
         pcb->DYNAMIC_PRIORITY = DP;
 
         // print pcb in table format -> do i print this before or after??
@@ -339,12 +354,15 @@ void *cpu_thread_function(void *arg)
         printf("\tACCU_TIME_SLICE = %d\n", pcb->ACCU_TIME_SLICE);
         printf("\tLAST_CPU = %d\n", pcb->LAST_CPU);
         printf("\tEXECUTION_TIME = %d\n", pcb->EXECUTION_TIME);
-        printf("\tCPU_AFFINITY = %d\n", pcb->CPU_AFFINITY);  
-        printf("\tSCHED_POLICY = %s\n}\n", pcb->SCHED_POLICY);  
-        
-        // TESTING: just assume its done 
-        pcb->PID = 0;
-        running_processes--;
+        printf("\tCPU_AFFINITY = %d\n", pcb->CPU_AFFINITY);
+        printf("\tSCHED_POLICY = %s\n}\n", pcb->SCHED_POLICY);
+
+        // if 0 time is remaining then process has ended
+        if (pcb->REMAIN_TIME == 0)
+        {
+            pcb->PID = 0;
+            running_processes--;
+        }
 
         pthread_mutex_unlock(&mutex_lock);
 
