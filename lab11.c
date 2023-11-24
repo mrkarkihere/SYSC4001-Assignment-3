@@ -79,6 +79,7 @@ int find_ready_index(struct process_information *queue){
 }
 
 int main(){
+    
     /* one thread = producer, multi-threads = consumers */
     srand(time(NULL));
 
@@ -97,24 +98,22 @@ int main(){
     // create consumer threads
     for(int thread_index = 0; thread_index < NUM_CPU; thread_index++){
 
-        // cons attr
+        // thread pointer
         pthread_t *c_thread = &cpu_threads[thread_index];
-        pthread_attr_t c_thread_attr; // consumer thread's attributes
         void *consumer_args = thread_index;
 
-        // set consumer thread to be detached
-        if(pthread_attr_init(&c_thread_attr) != 0) {perror("Attribute creation failed"); exit(EXIT_FAILURE);}
-
-        pthread_attr_setdetachstate(&c_thread_attr, PTHREAD_CREATE_DETACHED); // set it in a detached state; dont wait for anything
-
         // create consumer thread
-        if(pthread_create(c_thread, &c_thread_attr, cpu_thread_function, &consumer_args) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
-
-        // free attribute resources
-        (void)pthread_attr_destroy(&c_thread_attr);
+        if(pthread_create(c_thread, NULL, cpu_thread_function, &consumer_args) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
 
         // prevent mismatches
         usleep(50);
+    }
+
+    // join cpu threads
+    for(int thread_index = 0; thread_index < NUM_CPU; thread_index++){
+        // thread pointer
+        pthread_t *c_thread = &cpu_threads[thread_index];
+        pthread_join(*c_thread, NULL); // takes value, not the pointer
     }
 
     // wait for producer to return; idk if necessary atm
