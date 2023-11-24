@@ -38,7 +38,7 @@ struct core_queues{
 pthread_mutex_t mutex_lock;            // lock to do CS
 struct core_queues cpu_cores[NUM_CPU]; // create N struct queues; each represents 1 core
 int ready_processes = 0;                 // TESTING: use this to stop the program once 0 processes are running
-
+int GENERATING_PCB = 1;                    // TESTING: value is 1 if producer is producing still
 
 // thread functions
 void *producer_thread_function();
@@ -119,8 +119,8 @@ int main(){
     // wait for producer to return; idk if necessary atm
     if(pthread_join(producer_thread, &thread_return) != 0) {perror("Thread join failed"); exit(EXIT_FAILURE);}
 
-    // just end after 2 secs
-    sleep(2);
+    // just end after 1 secs
+    sleep(1);
     pthread_mutex_destroy(&mutex_lock);
 
     printf("$$term$$\n");
@@ -132,7 +132,6 @@ int main(){
 void *producer_thread_function(){
 
     printf("[PRODUCER_ID_%lu]: thread function invoked\n", (unsigned long) pthread_self());
-    // printf("[PRODUCER_ID_%lu]: generating %d PCB...\n", pthread_self(), NUM_PCB_GENERATE);
 
     // opening csv file
     FILE *file = fopen("pcb_data.csv", "r");
@@ -141,7 +140,7 @@ void *producer_thread_function(){
     // store data read from csv file in here
     struct ProcessData process_data_copy;
 
-    while(1){
+    while(GENERATING_PCB){
 
         int result = parse_csv_line(file, &process_data_copy);
         if(result == 1){
@@ -194,6 +193,7 @@ void *producer_thread_function(){
     }
 
     fclose(file);
+    GENERATING_PCB = 0;
 
     pthread_exit(NULL);
 }
@@ -206,7 +206,10 @@ void *cpu_thread_function(void *arg){
 
     struct core_queues *core = &cpu_cores[thread_index];
 
-    while(ready_processes > 0){
+    while(GENERATING_PCB){
+
+        // if no ready processes; wait for producer to create
+        if(ready_processes < 1) {continue;}
 
         // check all queues, in highest priority -> lowest
         struct process_information *pcb;
