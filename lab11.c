@@ -100,10 +100,10 @@ int main(){
 
         // thread pointer
         pthread_t *c_thread = &cpu_threads[thread_index];
-        void *consumer_args = thread_index;
+        void *consumer_args = (void*) &thread_index;
 
         // create consumer thread
-        if(pthread_create(c_thread, NULL, cpu_thread_function, &consumer_args) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
+        if(pthread_create(c_thread, NULL, cpu_thread_function, consumer_args) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
 
         // prevent mismatches
         usleep(50);
@@ -131,12 +131,12 @@ int main(){
 // producer thread
 void *producer_thread_function(){
 
-    printf("[PRODUCER_ID_%lu]: thread function invoked\n", pthread_self());
+    printf("[PRODUCER_ID_%lu]: thread function invoked\n", (unsigned long) pthread_self());
     // printf("[PRODUCER_ID_%lu]: generating %d PCB...\n", pthread_self(), NUM_PCB_GENERATE);
 
     // opening csv file
     FILE *file = fopen("pcb_data.csv", "r");
-    if(file == NULL) {perror("Error opening file"); return 1;}
+    if(file == NULL) {perror("Error opening file");}
 
     // store data read from csv file in here
     struct ProcessData process_data_copy;
@@ -160,13 +160,13 @@ void *producer_thread_function(){
             int index; // index in queue
 
             if(ready_queue == 0){               // RO
-                index = find_index(&(core->RQ_0));
+                index = find_index((core->RQ_0));
                 pcb = &(core->RQ_0)[index];
             }else if(ready_queue == 1){         // R1
-                index = find_index(&(core->RQ_1));
+                index = find_index((core->RQ_1));
                 pcb = &(core->RQ_1)[index];
             }else{                              // R2
-                index = find_index(&(core->RQ_2));
+                index = find_index((core->RQ_2));
                 pcb = &(core->RQ_2)[index];
             }
 
@@ -202,7 +202,7 @@ void *producer_thread_function(){
 void *cpu_thread_function(void *arg){
 
     int thread_index = *(int *)arg;
-    printf("[CONSUMER_ID_%lu]: thread #%d invoked\n", pthread_self(), thread_index);
+    printf("[CONSUMER_ID_%lu]: thread #%d invoked\n", (unsigned long) pthread_self(), thread_index);
 
     struct core_queues *core = &cpu_cores[thread_index];
 
@@ -251,11 +251,11 @@ void *cpu_thread_function(void *arg){
         pcb->TIME_SLICE = time_quantum;
         pcb->REMAIN_TIME = (pcb->REMAIN_TIME - pcb->TIME_SLICE >= 0) ? (pcb->REMAIN_TIME - pcb->TIME_SLICE) : 0;
         pcb->ACCU_TIME_SLICE += pcb->TIME_SLICE;
-        pcb->LAST_CPU = thread_index; // pthread_self();
+        pcb->LAST_CPU = thread_index;
         pcb->DYNAMIC_PRIORITY = DP;
 
         // print pcb in table format -> do i print this before or after??
-        printf("\n[CONSUMER_ID_%lu]: process_information = {\n", pthread_self());
+        printf("\n[CONSUMER_ID_%lu]: process_information = {\n", (unsigned long) pthread_self());
         printf("\tPID = %d\n", pcb->PID);
         printf("\tSTATIC_PRIORITY = %d\n", pcb->STATIC_PRIORITY);
         printf("\tDYNAMIC_PRIORITY = %d\n", pcb->DYNAMIC_PRIORITY);
