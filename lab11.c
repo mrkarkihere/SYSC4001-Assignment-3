@@ -98,7 +98,7 @@ int main(){
     for(int thread_index = 0; thread_index < NUM_CPU; thread_index++){
 
         // cons attr
-        pthread_t c_thread = cpu_threads[thread_index];
+        pthread_t *c_thread = &cpu_threads[thread_index];
         pthread_attr_t c_thread_attr; // consumer thread's attributes
         void *consumer_args = thread_index;
 
@@ -108,7 +108,7 @@ int main(){
         pthread_attr_setdetachstate(&c_thread_attr, PTHREAD_CREATE_DETACHED); // set it in a detached state; dont wait for anything
 
         // create consumer thread
-        if(pthread_create(&c_thread, &c_thread_attr, cpu_thread_function, &consumer_args) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
+        if(pthread_create(c_thread, &c_thread_attr, cpu_thread_function, &consumer_args) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
 
         // free attribute resources
         (void)pthread_attr_destroy(&c_thread_attr);
@@ -155,8 +155,8 @@ void *producer_thread_function(){
             pthread_mutex_lock(&mutex_lock);
 
             // pick a CPU; pick a queue; pick an index in queue
-            int ready_queue = pick_ready_queue(process_data_copy.priority);        // R0, R1, or R3
             struct core_queues *core = &cpu_cores[process_data_copy.cpu_affinity]; // pick the cpu
+            int ready_queue = pick_ready_queue(process_data_copy.priority);        // R0, R1, or R3
             struct process_information *pcb;
             int index; // index in queue
 
@@ -178,7 +178,7 @@ void *producer_thread_function(){
             pcb->REMAIN_TIME = process_data_copy.execution_time; // generate_int(5, 20) * 1000; // milliseconds
             pcb->TIME_SLICE = 0;
             pcb->ACCU_TIME_SLICE = 0;
-            pcb->LAST_CPU = 0;
+            pcb->LAST_CPU = -1;
             pcb->EXECUTION_TIME = process_data_copy.execution_time;
             pcb->CPU_AFFINITY = process_data_copy.cpu_affinity;
             pcb->SCHED_POLICY = process_data_copy.policy;
@@ -199,7 +199,7 @@ void *producer_thread_function(){
     pthread_exit(NULL);
 }
 
-// consumer threat
+// consumer thread
 void *cpu_thread_function(void *arg){
 
     int thread_index = *(int *)arg;
