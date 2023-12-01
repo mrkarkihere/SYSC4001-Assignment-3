@@ -150,6 +150,8 @@ void *producer_thread_function(){
 
     // store data read from csv file in here
     struct ProcessData process_data_copy;
+    /* once > 5, start sleeping */
+    int NUM_GENERATED = 0; // keep track of the nubmer of processes generated thus far
 
     while(GENERATING_PCB){
 
@@ -193,11 +195,14 @@ void *producer_thread_function(){
             pcb->SCHED_POLICY = process_data_copy.policy;
 
             ready_processes++;
+            NUM_GENERATED++;
 
             pthread_mutex_unlock(&mutex_lock);
 
-            // "To demonstrate the effect of the producer/consumer solution..." -> add a little sleep
-            usleep(generate_int(100, 600)); // sleep 100us-600us per each read
+            // start sleeping after ive rapid generated the first batch of 6 processes
+            if(NUM_GENERATED > 5){
+                usleep(generate_int(100, 600)); // sleep 100us-600us per each read
+            }
         }else{
             break;
         }
@@ -234,7 +239,7 @@ void *cpu_thread_function(void *arg){
         }else if (rq2_index > -1){
             pcb = &(core->RQ_2)[rq2_index];
         }else{
-            continue;
+            continue; // no ready processes found
         }
 
         // lock mutex and enter critical section
