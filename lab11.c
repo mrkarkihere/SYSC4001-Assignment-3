@@ -59,19 +59,31 @@ int pick_ready_queue(int priority){
 }
 
 // search the ready queue for an empty index and return it
-int find_index(struct process_information *queue){
-    for(int i = 0; i < MAX_QUEUE_PROCESS; i++){
-        if(queue->PID == 0){
-            return i;
-        }
+int find_index(struct process_information *queue) {
+
+    int new_priority = queue->STATIC_PRIORITY; // priority of the new process to be inserted
+    int i = 0;
+
+    // find the correct index based on priority
+    for(i = 0; i < MAX_QUEUE_PROCESS; i++) {
+        if(queue[i].PID == 0 || new_priority < queue[i].STATIC_PRIORITY) {break;} // found new index
     }
-    return -1;
+
+    // shift elements to make space for the new process
+    if (i < MAX_QUEUE_PROCESS - 1) {
+        for(int j = MAX_QUEUE_PROCESS - 1; j > i; j--){
+            queue[j] = queue[j - 1];
+        }
+    }   
+    printf("put at index: %d\n", i);
+    return i; // return the index where the new process should be inserted
 }
+
 
 // find the first index of a ready process
 int find_ready_index(struct process_information *queue){
     for(int i = 0; i < MAX_QUEUE_PROCESS; i++){
-        if(queue->PID > 0){
+        if(queue[i].PID > 0){
             return i;
         }
     }
@@ -92,8 +104,6 @@ int main(){
 
     // create producer thread
     if(pthread_create(&producer_thread, NULL, producer_thread_function, NULL) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
-
-    usleep(100); // give producer a chance to produce before consuming for loop
 
     // create consumer threads
     for(int thread_index = 0; thread_index < NUM_CPU; thread_index++){
@@ -119,8 +129,9 @@ int main(){
     // wait for producer to return; idk if necessary atm
     if(pthread_join(producer_thread, &thread_return) != 0) {perror("Thread join failed"); exit(EXIT_FAILURE);}
 
-    // just end after 1 secs
+    // wait a second after threads join and clean-up
     sleep(1);
+
     pthread_mutex_destroy(&mutex_lock);
 
     printf("$$term$$\n");
@@ -170,10 +181,10 @@ void *producer_thread_function(){
             }
 
             // initiate pcb
-            pcb->PID = process_data_copy.pid;                  // generate_int(0, 1000);
+            pcb->PID = process_data_copy.pid;
             pcb->STATIC_PRIORITY = process_data_copy.priority; // 120;
             pcb->DYNAMIC_PRIORITY = pcb->STATIC_PRIORITY;
-            pcb->REMAIN_TIME = process_data_copy.execution_time; // generate_int(5, 20) * 1000; // milliseconds
+            pcb->REMAIN_TIME = process_data_copy.execution_time; // milliseconds
             pcb->TIME_SLICE = 0;
             pcb->ACCU_TIME_SLICE = 0;
             pcb->LAST_CPU = -1;
@@ -202,14 +213,12 @@ void *producer_thread_function(){
 void *cpu_thread_function(void *arg){
 
     int thread_index = *(int *)arg;
-    printf("[CONSUMER_ID_%lu]: thread #%d invoked\n", (unsigned long) pthread_self(), thread_index);
+    //printf("[CONSUMER_ID_%lu]: thread #%d invoked\n", (unsigned long) pthread_self(), thread_index);
 
     struct core_queues *core = &cpu_cores[thread_index];
 
-    while(GENERATING_PCB){
-
-        // if no ready processes; wait for producer to create
-        if(ready_processes < 1) {continue;}
+    // while there's a ready process OR processes are being created
+    while(ready_processes > 0 || GENERATING_PCB){
 
         // check all queues, in highest priority -> lowest
         struct process_information *pcb;
@@ -258,6 +267,8 @@ void *cpu_thread_function(void *arg){
         pcb->DYNAMIC_PRIORITY = DP;
 
         // print pcb in table format -> do i print this before or after??
+    
+        /*
         printf("\n[CONSUMER_ID_%lu]: process_information = {\n", (unsigned long) pthread_self());
         printf("\tPID = %d\n", pcb->PID);
         printf("\tSTATIC_PRIORITY = %d\n", pcb->STATIC_PRIORITY);
@@ -269,9 +280,13 @@ void *cpu_thread_function(void *arg){
         printf("\tEXECUTION_TIME = %d\n", pcb->EXECUTION_TIME);
         printf("\tCPU_AFFINITY = %d\n", pcb->CPU_AFFINITY);
         printf("\tSCHED_POLICY = %d\n}\n", pcb->SCHED_POLICY);
+        */
+
+        //printf("process #%d executing, remaining time: %d\n", pcb->PID, pcb->REMAIN_TIME);
 
         // if 0 time is remaining then process has ended
         if(pcb->REMAIN_TIME == 0){
+            printf("process #%d completed...\n", pcb->PID);
             pcb->PID = 0;
             ready_processes--;
         }
