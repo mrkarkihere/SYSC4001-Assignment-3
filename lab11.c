@@ -25,6 +25,7 @@ struct process_information{
     int EXECUTION_TIME;             // calculated t`otal execution time for the process
     int CPU_AFFINITY;               // which CPU does the process want
     enum SchedulingType SCHED_POLICY; /* scheduling policy used for process */
+    int SLEEP_AVG;                  // average sleep time of the process
 };
 
 // ready queue structure
@@ -39,6 +40,7 @@ pthread_mutex_t mutex_lock;            // lock to do CS
 struct core_queues cpu_cores[NUM_CPU]; // create N struct queues; each represents 1 core
 int ready_processes = 0;                 // TESTING: use this to stop the program once 0 processes are running
 int GENERATING_PCB = 1;                    // TESTING: value is 1 if producer is producing still
+int MAX_SLEEP_AVG = 10 * 1000; // max sleep average (10 milliseconds)
 
 // thread functions
 void *producer_thread_function();
@@ -75,7 +77,7 @@ int find_index(struct process_information *queue) {
             queue[j] = queue[j - 1];
         }
     }   
-    printf("put at index: %d\n", i);
+    //printf("put at index: %d\n", i);
     return i; // return the index where the new process should be inserted
 }
 
@@ -87,7 +89,7 @@ int find_ready_index(struct process_information *queue){
             return i;
         }
     }
-    return -1;
+    return -1; // do error checking later
 }
 
 int main(){
@@ -193,6 +195,7 @@ void *producer_thread_function(){
             pcb->EXECUTION_TIME = process_data_copy.execution_time;
             pcb->CPU_AFFINITY = process_data_copy.cpu_affinity;
             pcb->SCHED_POLICY = process_data_copy.policy;
+            pcb->SLEEP_AVG = 0;
 
             ready_processes++;
             NUM_GENERATED++;
@@ -270,6 +273,11 @@ void *cpu_thread_function(void *arg){
         pcb->ACCU_TIME_SLICE += pcb->TIME_SLICE;
         pcb->LAST_CPU = thread_index;
         pcb->DYNAMIC_PRIORITY = DP;
+        if(pcb->SLEEP_AVG >= MAX_SLEEP_AVG){
+            printf("process %d: reached max_sleep_avg\n", pcb->PID);
+        }else{
+            pcb->SLEEP_AVG += pcb->TIME_SLICE;
+        }
 
         // print pcb in table format -> do i print this before or after??
     
