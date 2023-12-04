@@ -92,6 +92,35 @@ int find_ready_index(struct process_information *queue){
     return -1; // do error checking later
 }
 
+// calculate time quantum
+int calc_time_quantum(int STATIC_PRIORITY){
+    if(STATIC_PRIORITY < 120){
+        return (140 - STATIC_PRIORITY) * 20;
+    }
+    return (140 - STATIC_PRIORITY) * 5;
+}
+
+// enqueue
+void enqueue(struct process_information *queue, struct process_information new_pcb){
+    pthread_mutex_lock(&mutex_lock); // enter cs
+    int index = find_index(queue);
+    queue[index] = new_pcb; // add new pcb
+    pthread_mutex_unlock(&mutex_lock); // exit cs
+}
+
+// dequeue
+void dequeue(struct process_information *queue, int pid){
+    pthread_mutex_lock(&mutex_lock); // enter cs
+    for(int i = 0; i < MAX_QUEUE_PROCESS; i++){
+        if(queue[i].PID == pid){ // find process
+            queue[i].PID = 0; // reset by setting to 0 so another process can take queue spot
+            ready_processes--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&mutex_lock); // exit cs
+}
+
 int main(){
     
     /* one thread = producer, multi-threads = consumers */
@@ -248,15 +277,6 @@ void *cpu_thread_function(void *arg){
         // lock mutex and enter critical section
         pthread_mutex_lock(&mutex_lock);
 
-        int time_quantum; // in millseconds
-
-        // calculate time quantum
-        if(pcb->STATIC_PRIORITY < 120){
-            time_quantum = (140 - pcb->STATIC_PRIORITY) * 20;
-        }else{
-            time_quantum = (140 - pcb->STATIC_PRIORITY) * 5;
-        }
-
         // calculate dp
         int bonus = (pcb->EXECUTION_TIME < pcb->TIME_SLICE) ? 10 : 5; //= generate_int(0, 10);
         int DP = pcb->STATIC_PRIORITY - bonus + 5;
@@ -268,16 +288,11 @@ void *cpu_thread_function(void *arg){
         }
 
         // set values
-        pcb->TIME_SLICE = time_quantum;
+        pcb->TIME_SLICE = calc_time_quantum(pcb->STATIC_PRIORITY);
         pcb->REMAIN_TIME = (pcb->REMAIN_TIME - pcb->TIME_SLICE >= 0) ? (pcb->REMAIN_TIME - pcb->TIME_SLICE) : 0;
         pcb->ACCU_TIME_SLICE += pcb->TIME_SLICE;
         pcb->LAST_CPU = thread_index;
         pcb->DYNAMIC_PRIORITY = DP;
-        if(pcb->SLEEP_AVG >= MAX_SLEEP_AVG){
-            printf("process %d: reached max_sleep_avg\n", pcb->PID);
-        }else{
-            pcb->SLEEP_AVG += pcb->TIME_SLICE;
-        }
 
         // print pcb in table format -> do i print this before or after??
     
@@ -294,8 +309,6 @@ void *cpu_thread_function(void *arg){
         printf("\tCPU_AFFINITY = %d\n", pcb->CPU_AFFINITY);
         printf("\tSCHED_POLICY = %d\n}\n", pcb->SCHED_POLICY);
         */
-
-        //printf("process #%d executing, remaining time: %d\n", pcb->PID, pcb->REMAIN_TIME);
 
         // if 0 time is remaining then process has ended
         if(pcb->REMAIN_TIME == 0){
