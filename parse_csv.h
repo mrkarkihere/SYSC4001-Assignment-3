@@ -46,8 +46,8 @@ int parse_csv_line(FILE *file, struct ProcessData *process_data) {
                         &process_data->execution_time,
                         &process_data->cpu_affinity);
 
-    if (result == 0) {
-        // fscanf returns 0 when it fails to match any items
+    if (result == EOF) {
+        // fscanf returns EOF when it fails to match any items
         return 0;
     } else if (result != 5) {
         // Parsing error

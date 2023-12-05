@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <sys/time.h>
 #include "parse_csv.h"
 
 #define NUM_CPU 4             // number of consumer threads
@@ -26,6 +27,9 @@ struct process_information{
     int CPU_AFFINITY;               // which CPU does the process want
     enum SchedulingType SCHED_POLICY; /* scheduling policy used for process */
     int SLEEP_AVG;                  // average sleep time of the process
+
+    int BLOCKED; // 1 if the process is in a blocked state
+    struct timeval BLOCKED_START_TIME; // when process was blocked
 };
 
 // ready queue structure
