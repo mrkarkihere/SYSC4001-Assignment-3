@@ -5,14 +5,17 @@
  */
 
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include "parse_csv.h"
 
 #define NUM_CPU 4             // number of consumer threads
 #define MAX_QUEUE_PROCESS 100 // max of 100 processes per queue
+#define MILLISECOND_TO_MICROSECOND 1000 // times by * 1000 for the usleep() calls; assume all numbers used in base are in milliseconds
+#define MAX(a, b) ((a) > (b) ? (a) : (b)) // find the larger number
+#define MIN(a, b) ((a) < (b) ? (a) : (b)) // find the smaller number
 
 // basic process information
 struct process_information{
@@ -27,9 +30,8 @@ struct process_information{
     int CPU_AFFINITY;               // which CPU does the process want
     enum SchedulingType SCHED_POLICY; /* scheduling policy used for process */
     int SLEEP_AVG;                  // average sleep time of the process
-
     int BLOCKED; // 1 if the process is in a blocked state
-    struct timeval BLOCKED_START_TIME; // when process was blocked
+    struct timeval BLOCKED_TIME; // when process was blocked
 };
 
 // ready queue structure
@@ -44,7 +46,7 @@ pthread_mutex_t mutex_lock;            // lock to do CS
 struct core_queues cpu_cores[NUM_CPU]; // create N struct queues; each represents 1 core
 int ready_processes = 0;                 // TESTING: use this to stop the program once 0 processes are running
 int GENERATING_PCB = 1;                    // TESTING: value is 1 if producer is producing still
-int MAX_SLEEP_AVG = 10 * 1000; // max sleep average (10 milliseconds)
+int MAX_SLEEP_AVG = 10; // max sleep average (10 milliseconds)
 
 // thread functions
 void *producer_thread_function();
@@ -66,7 +68,6 @@ int pick_ready_queue(int priority){
 
 // search the ready queue for an empty index and return it
 int find_index(struct process_information *queue) {
-
     int new_priority = queue->STATIC_PRIORITY; // priority of the new process to be inserted
     int i = 0;
 
@@ -81,7 +82,6 @@ int find_index(struct process_information *queue) {
             queue[j] = queue[j - 1];
         }
     }   
-    //printf("put at index: %d\n", i);
     return i; // return the index where the new process should be inserted
 }
 
@@ -93,7 +93,9 @@ int find_ready_index(struct process_information *queue){
             return i;
         }
     }
-    return -1; // do error checking later
+    // return -1 here will cause the loop to continue and keep searching; awaiting processes to be added to queue
+    // if no processes are found in any queue and no PCBs are being generated; then we end the simulation
+    return -1; 
 }
 
 // calculate time quantum
@@ -106,7 +108,23 @@ int calc_time_quantum(int STATIC_PRIORITY){
 
 // calculate dynamic priority
 int calc_dyanmic_priority(int STATIC_PRIORITY, int bonus){
-    return max(100, min(STATIC_PRIORITY - bonus + 5, 139));
+    return MAX(100, MIN(STATIC_PRIORITY - bonus + 5, 139));
+}
+
+// calculate the time difference between 2 times; returns in milliseconds
+long double calc_delta_time(struct timeval start, struct timeval end){
+    return ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec));
+}
+
+// calculate the sleep_avg for the process; returns int
+int calc_sleep_avg(int sleep_avg, long double delta_time, int time_quantum){
+    sleep_avg += delta_time / time_quantum - 1; 
+    if(sleep_avg < 0) {
+        sleep_avg=0;
+    } else if( sleep_avg > MAX_SLEEP_AVG ){
+        sleep_avg = MAX_SLEEP_AVG;
+    }
+    return (int) sleep_avg;
 }
 
 // enqueue a proccess to its associated queue
@@ -139,7 +157,9 @@ void print_pcb(struct process_information pcb){
     printf("\tLAST_CPU = %d\n", pcb.LAST_CPU);
     printf("\tEXECUTION_TIME = %d\n", pcb.EXECUTION_TIME);
     printf("\tCPU_AFFINITY = %d\n", pcb.CPU_AFFINITY);
-    printf("\tSCHED_POLICY = %d\n}\n", pcb.SCHED_POLICY);
+    printf("\tSCHED_POLICY = %d\n", pcb.SCHED_POLICY);
+    printf("\tSLEEP_AVG = %d\n", pcb.SLEEP_AVG);
+    printf("\tBLOCKED = %d\n}\n", pcb.BLOCKED);
 }
 
 int main(){
@@ -254,7 +274,7 @@ void *producer_thread_function(){
 
             // start sleeping after ive rapid generated the first batch of 6 processes
             if(NUM_GENERATED > 5){
-                usleep(generate_int(100, 600)); // sleep 100us-600us per each read
+                usleep(generate_int(100, 600) * MILLISECOND_TO_MICROSECOND); // sleep 100us-600 ms per each read
             }
         }else{
             break;
@@ -282,6 +302,8 @@ void *cpu_thread_function(void *arg){
         struct process_information *pcb;
         struct process_information *selected_queue;
         struct process_information temp_pcb;
+        struct timeval UNBLOCKED_TIME;
+        long double DELTA_TIME; // time difference in milliseconds
 
         int rq0_index = find_ready_index(core->RQ_0);
         int rq1_index = find_ready_index(core->RQ_1);
@@ -306,9 +328,15 @@ void *cpu_thread_function(void *arg){
         temp_pcb = *pcb;
         dequeue(selected_queue, pcb->PID); // remove process from queue
 
+        // if its NORMAL scheduling and the task was blocked; record the time it was unblocked
+        if(temp_pcb.SCHED_POLICY == NORMAL && temp_pcb.BLOCKED){
+            gettimeofday(&UNBLOCKED_TIME, NULL); // record when the process was unblocked
+            DELTA_TIME = calc_delta_time(UNBLOCKED_TIME, temp_pcb.BLOCKED_TIME); // calculate time difference in milliseconds
+        }
+
         // set values
         temp_pcb.TIME_SLICE = calc_time_quantum(temp_pcb.STATIC_PRIORITY); // max cpu time
-        temp_pcb.EXECUTION_TIME = generate_int(1,10); // how long process runs in cpu
+        temp_pcb.EXECUTION_TIME = generate_int(1,10); // how long process runs in cpu; in milliseconds
         temp_pcb.LAST_CPU = thread_index;
         pthread_mutex_unlock(&mutex_lock); // exit cs
 
@@ -316,11 +344,20 @@ void *cpu_thread_function(void *arg){
         if(temp_pcb.SCHED_POLICY == NORMAL){ // NORMAL
             printf("[NORMAL]: Process #%d running\n", temp_pcb.PID);
 
-            usleep(temp_pcb.TIME_SLICE); // idk what this shud be..
+            usleep(temp_pcb.TIME_SLICE * MILLISECOND_TO_MICROSECOND); // idk what this shud be..
 
             pthread_mutex_lock(&mutex_lock); // enter cs
             temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
             temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
+
+            // process didn't use entire time slice
+            if(temp_pcb.EXECUTION_TIME < temp_pcb.TIME_SLICE){
+                temp_pcb.BLOCKED = 1;
+                gettimeofday(&temp_pcb.BLOCKED_TIME, NULL); 
+            }
+            
+            // update sleep_avg
+            temp_pcb.SLEEP_AVG = calc_sleep_avg(temp_pcb.SLEEP_AVG, DELTA_TIME, temp_pcb.TIME_SLICE);
 
             // if 0 time remaining then process has ended
             if(temp_pcb.REMAIN_TIME == 0){
@@ -330,7 +367,7 @@ void *cpu_thread_function(void *arg){
             }else{ // process not done yet
                 printf("[NORMAL]: Process #%d finished time_slice !\n", temp_pcb.PID);
 
-                temp_pcb.DYNAMIC_PRIORITY = calc_dyanmic_priority(temp_pcb.STATIC_PRIORITY, temp_pcb.SLEEP_AVG);
+                temp_pcb.DYNAMIC_PRIORITY = calc_dyanmic_priority(temp_pcb.DYNAMIC_PRIORITY, temp_pcb.SLEEP_AVG);
                 // if DP >= 130 then move to RQ2; else goes back to original queue
                 if(temp_pcb.DYNAMIC_PRIORITY >= 130){
                     printf("[NORMAL]: Proccess %d move to RQ2!\n", temp_pcb.PID);
@@ -344,7 +381,7 @@ void *cpu_thread_function(void *arg){
         }else if(temp_pcb.SCHED_POLICY == RR){ // RR
 
             printf("[RR]: Process #%d running\n", temp_pcb.PID);
-            usleep(temp_pcb.TIME_SLICE); // how long the cpu is needed; assume its the time_slice for RR processes
+            usleep(temp_pcb.TIME_SLICE * MILLISECOND_TO_MICROSECOND); // how long the cpu is needed; assume its the time_slice for RR processes
 
             pthread_mutex_lock(&mutex_lock); // enter cs
             temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
@@ -365,7 +402,7 @@ void *cpu_thread_function(void *arg){
             /* FIFO tasks are non-preemptive; they run to completion, no iterations are needed */
 
             printf("[FIFO]: Process #%d running\n", temp_pcb.PID);
-            usleep(temp_pcb.REMAIN_TIME); // run to completion
+            usleep(temp_pcb.REMAIN_TIME * MILLISECOND_TO_MICROSECOND); // run to completion
 
             // all this is not necessary as 'dequeue' already got rid of the process from the queue; for testing
             pthread_mutex_lock(&mutex_lock); // enter cs
