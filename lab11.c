@@ -18,11 +18,11 @@ struct process_information{
     int PID;                        // pid generated
     int STATIC_PRIORITY;            // default = 120; shud be b/w 100-139, lower # = higher priority
     int DYNAMIC_PRIORITY;           // changing priority value
-    int REMAIN_TIME;                // remainder execution time; initially b/w 5-20 secs
-    int TIME_SLICE;                 // calculated time slice value
+    int REMAIN_TIME;                // remainder execution time
+    int TIME_SLICE;                 // max amount of cpu time for process
     int ACCU_TIME_SLICE;            // accumulated time slice
     int LAST_CPU;                   // the thread id that the process last ran
-    int EXECUTION_TIME;             // calculated t`otal execution time for the process
+    int EXECUTION_TIME;             // actual cpu use time of process per iteration
     int CPU_AFFINITY;               // which CPU does the process want
     enum SchedulingType SCHED_POLICY; /* scheduling policy used for process */
     int SLEEP_AVG;                  // average sleep time of the process
@@ -100,25 +100,42 @@ int calc_time_quantum(int STATIC_PRIORITY){
     return (140 - STATIC_PRIORITY) * 5;
 }
 
-// enqueue
-void enqueue(struct process_information *queue, struct process_information new_pcb){
-    pthread_mutex_lock(&mutex_lock); // enter cs
-    int index = find_index(queue);
-    queue[index] = new_pcb; // add new pcb
-    pthread_mutex_unlock(&mutex_lock); // exit cs
+// calculate dynamic priority
+int calc_dyanmic_priority(int STATIC_PRIORITY, int bonus){
+    return max(100, min(STATIC_PRIORITY - bonus + 5, 139));
 }
 
-// dequeue
+// enqueue a proccess to its associated queue
+void enqueue(struct process_information *queue, struct process_information new_pcb){
+    int index = find_index(queue);
+    queue[index] = new_pcb; // add new pcb
+    ready_processes++;
+}
+
+// dequeue a process from its associated queue
 void dequeue(struct process_information *queue, int pid){
-    pthread_mutex_lock(&mutex_lock); // enter cs
     for(int i = 0; i < MAX_QUEUE_PROCESS; i++){
-        if(queue[i].PID == pid){ // find process
-            queue[i].PID = 0; // reset by setting to 0 so another process can take queue spot
-            ready_processes--;
+        if(queue[i].PID == pid){
+            queue[i].PID = 0; // set to 0 so another process can take queue spot
+            ready_processes--; // decrement the # of processes
             break;
         }
     }
-    pthread_mutex_unlock(&mutex_lock); // exit cs
+}
+
+// useful print function to print PCB in table format
+void print_pcb(struct process_information pcb){
+    printf("\n[THREAD_ID_%lu]: process_information = {\n", (unsigned long) pthread_self());
+    printf("\tPID = %d\n", pcb.PID);
+    printf("\tSTATIC_PRIORITY = %d\n", pcb.STATIC_PRIORITY);
+    printf("\tDYNAMIC_PRIORITY = %d\n", pcb.DYNAMIC_PRIORITY);
+    printf("\tREMAIN_TIME = %d\n", pcb.REMAIN_TIME);
+    printf("\tTIME_SLICE = %d\n", pcb.TIME_SLICE);
+    printf("\tACCU_TIME_SLICE = %d\n", pcb.ACCU_TIME_SLICE);
+    printf("\tLAST_CPU = %d\n", pcb.LAST_CPU);
+    printf("\tEXECUTION_TIME = %d\n", pcb.EXECUTION_TIME);
+    printf("\tCPU_AFFINITY = %d\n", pcb.CPU_AFFINITY);
+    printf("\tSCHED_POLICY = %d\n}\n", pcb.SCHED_POLICY);
 }
 
 int main(){
@@ -259,6 +276,9 @@ void *cpu_thread_function(void *arg){
 
         // check all queues, in highest priority -> lowest
         struct process_information *pcb;
+        struct process_information *selected_queue;
+        struct process_information temp_pcb;
+
         int rq0_index = find_ready_index(core->RQ_0);
         int rq1_index = find_ready_index(core->RQ_1);
         int rq2_index = find_ready_index(core->RQ_2);
@@ -266,61 +286,91 @@ void *cpu_thread_function(void *arg){
         // find a process to run, if not found, continue loop
         if(rq0_index > -1){
             pcb = &(core->RQ_0)[rq0_index];
+            selected_queue = core->RQ_0;
         }else if (rq1_index > -1){
             pcb = &(core->RQ_1)[rq1_index];
+            selected_queue = core->RQ_1;
         }else if (rq2_index > -1){
             pcb = &(core->RQ_2)[rq2_index];
+            selected_queue = core->RQ_2;
         }else{
             continue; // no ready processes found
         }
 
-        // lock mutex and enter critical section
-        pthread_mutex_lock(&mutex_lock);
-
-        // calculate dp
-        int bonus = (pcb->EXECUTION_TIME < pcb->TIME_SLICE) ? 10 : 5; //= generate_int(0, 10);
-        int DP = pcb->STATIC_PRIORITY - bonus + 5;
-
-        if(DP < 100){
-            DP = 100;
-        }else if(DP > 139){
-            DP = 139;
-        }
+        pthread_mutex_lock(&mutex_lock); // lock cs
+        // copy pcb data to temporary buffer
+        temp_pcb = *pcb;
+        dequeue(selected_queue, pcb->PID); // remove process from queue
 
         // set values
-        pcb->TIME_SLICE = calc_time_quantum(pcb->STATIC_PRIORITY);
-        pcb->REMAIN_TIME = (pcb->REMAIN_TIME - pcb->TIME_SLICE >= 0) ? (pcb->REMAIN_TIME - pcb->TIME_SLICE) : 0;
-        pcb->ACCU_TIME_SLICE += pcb->TIME_SLICE;
-        pcb->LAST_CPU = thread_index;
-        pcb->DYNAMIC_PRIORITY = DP;
+        temp_pcb.TIME_SLICE = calc_time_quantum(temp_pcb.STATIC_PRIORITY); // max cpu time
+        temp_pcb.EXECUTION_TIME = generate_int(1,10); // how long process runs in cpu
+        temp_pcb.LAST_CPU = thread_index;
+        pthread_mutex_unlock(&mutex_lock); // exit cs
 
-        // print pcb in table format -> do i print this before or after??
-    
-        /*
-        printf("\n[CONSUMER_ID_%lu]: process_information = {\n", (unsigned long) pthread_self());
-        printf("\tPID = %d\n", pcb->PID);
-        printf("\tSTATIC_PRIORITY = %d\n", pcb->STATIC_PRIORITY);
-        printf("\tDYNAMIC_PRIORITY = %d\n", pcb->DYNAMIC_PRIORITY);
-        printf("\tREMAIN_TIME = %d\n", pcb->REMAIN_TIME);
-        printf("\tTIME_SLICE = %d\n", pcb->TIME_SLICE);
-        printf("\tACCU_TIME_SLICE = %d\n", pcb->ACCU_TIME_SLICE);
-        printf("\tLAST_CPU = %d\n", pcb->LAST_CPU);
-        printf("\tEXECUTION_TIME = %d\n", pcb->EXECUTION_TIME);
-        printf("\tCPU_AFFINITY = %d\n", pcb->CPU_AFFINITY);
-        printf("\tSCHED_POLICY = %d\n}\n", pcb->SCHED_POLICY);
-        */
+        // check type of scheduling
+        if(temp_pcb.SCHED_POLICY == NORMAL){ // NORMAL
+            printf("[NORMAL]: Process #%d running\n", temp_pcb.PID);
 
-        // if 0 time is remaining then process has ended
-        if(pcb->REMAIN_TIME == 0){
-            printf("process #%d completed...\n", pcb->PID);
-            pcb->PID = 0;
-            ready_processes--;
+            usleep(temp_pcb.TIME_SLICE); // idk what this shud be..
+
+            pthread_mutex_lock(&mutex_lock); // enter cs
+            temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
+            temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
+
+            // if 0 time remaining then process has ended
+            if(temp_pcb.REMAIN_TIME == 0){
+                printf("[NORMAL]: Process #%d completed...\n", temp_pcb.PID);
+                print_pcb(temp_pcb);
+
+            }else{ // process not done yet
+                printf("[NORMAL]: Process #%d finished time_slice !\n", temp_pcb.PID);
+
+                temp_pcb.DYNAMIC_PRIORITY = calc_dyanmic_priority(temp_pcb.STATIC_PRIORITY, temp_pcb.SLEEP_AVG);
+                // if DP >= 130 then move to RQ2; else goes back to original queue
+                if(temp_pcb.DYNAMIC_PRIORITY >= 130){
+                    printf("[NORMAL]: Proccess %d move to RQ2!\n", temp_pcb.PID);
+                    enqueue(core->RQ_2, temp_pcb); // pop back in queue   
+                }else{
+                    enqueue(selected_queue, temp_pcb); // pop back in queue   
+                }
+            }
+            pthread_mutex_unlock(&mutex_lock); // exit cs
+
+        }else if(temp_pcb.SCHED_POLICY == RR){ // RR
+
+            printf("[RR]: Process #%d running\n", temp_pcb.PID);
+            usleep(temp_pcb.TIME_SLICE); // how long the cpu is needed; assume its the time_slice for RR processes
+
+            pthread_mutex_lock(&mutex_lock); // enter cs
+            temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
+            temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
+
+            // if 0 time remaining then process has ended
+            if(temp_pcb.REMAIN_TIME == 0){
+                printf("[RR]: Process #%d completed...\n", temp_pcb.PID);
+                print_pcb(temp_pcb);
+
+            }else{ // process not done yet
+                printf("[RR]: Process #%d finished time_slice !\n", temp_pcb.PID);
+                enqueue(selected_queue, temp_pcb); // pop back in queue
+            }
+            pthread_mutex_unlock(&mutex_lock); // exit cs
+
+        }else{ // FIFO
+            /* FIFO tasks are non-preemptive; they run to completion, no iterations are needed */
+
+            printf("[FIFO]: Process #%d running\n", temp_pcb.PID);
+            usleep(temp_pcb.REMAIN_TIME); // run to completion
+
+            // all this is not necessary as 'dequeue' already got rid of the process from the queue; for testing
+            pthread_mutex_lock(&mutex_lock); // enter cs
+            temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
+            temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
+            printf("[FIFO]: Process #%d completed...\n", temp_pcb.PID);
+            print_pcb(temp_pcb);
+            pthread_mutex_unlock(&mutex_lock); // exit cs
         }
-
-        pthread_mutex_unlock(&mutex_lock);
-
-        // sleep the time quantum -> "running the process"
-        usleep(pcb->TIME_SLICE);
     }
 
     pthread_exit(NULL);
