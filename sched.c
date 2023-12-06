@@ -349,15 +349,13 @@ void *cpu_thread_function(void *arg){
             pthread_mutex_lock(&mutex_lock); // enter cs
             temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
             temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
-
+            temp_pcb.SLEEP_AVG = calc_sleep_avg(temp_pcb.SLEEP_AVG, DELTA_TIME, temp_pcb.TIME_SLICE);
+            
             // process didn't use entire time slice
             if(temp_pcb.EXECUTION_TIME < temp_pcb.TIME_SLICE){
                 temp_pcb.BLOCKED = 1;
                 gettimeofday(&temp_pcb.BLOCKED_TIME, NULL); 
             }
-            
-            // update sleep_avg
-            temp_pcb.SLEEP_AVG = calc_sleep_avg(temp_pcb.SLEEP_AVG, DELTA_TIME, temp_pcb.TIME_SLICE);
 
             // if 0 time remaining then process has ended
             if(temp_pcb.REMAIN_TIME == 0){
@@ -368,7 +366,7 @@ void *cpu_thread_function(void *arg){
                 temp_pcb.DYNAMIC_PRIORITY = calc_dyanmic_priority(temp_pcb.DYNAMIC_PRIORITY, temp_pcb.SLEEP_AVG);
                 // if DP >= 130 then move to RQ2; else goes back to original queue
                 if(temp_pcb.DYNAMIC_PRIORITY >= 130 ){
-                    printf("[NORMAL]: Process #%d finished time_slice! DP has changed to %d, enqueuing to RQ2...\n", temp_pcb.PID, temp_pcb.DYNAMIC_PRIORITY);
+                    printf("[NORMAL]: Process #%d finished time_slice! Dynamic Priority is %d, enqueuing to RQ2...\n", temp_pcb.PID, temp_pcb.DYNAMIC_PRIORITY);
                     enqueue(core->RQ_2, temp_pcb); // pop back in queue   
                 }else{
                     printf("[NORMAL]: Process #%d finished time_slice! Enqueuing to previous queue...\n", temp_pcb.PID);
