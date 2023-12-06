@@ -42,7 +42,8 @@ struct core_queues{
 };
 
 // globals
-pthread_mutex_t mutex_lock;            // lock to do CS
+pthread_mutex_t queue_lock;            // lock to do queue access
+pthread_mutex_t process_lock;          // lock to do process locks; when updating values
 struct core_queues cpu_cores[NUM_CPU]; // create N struct queues; each represents 1 core
 int ready_processes = 0;                 // TESTING: use this to stop the program once 0 processes are running
 int GENERATING_PCB = 1;                    // TESTING: value is 1 if producer is producing still
@@ -129,13 +130,16 @@ int calc_sleep_avg(int sleep_avg, long double delta_time, int time_quantum){
 
 // enqueue a proccess to its associated queue
 void enqueue(struct process_information *queue, struct process_information new_pcb){
+    pthread_mutex_lock(&queue_lock); // enter cs
     int index = find_index(queue);
     queue[index] = new_pcb; // add new pcb
     ready_processes++;
+    pthread_mutex_unlock(&queue_lock); // exit cs
 }
 
 // dequeue a process from its associated queue
 void dequeue(struct process_information *queue, int pid){
+    pthread_mutex_lock(&queue_lock); // enter cs
     for(int i = 0; i < MAX_QUEUE_PROCESS; i++){
         if(queue[i].PID == pid){
             queue[i].PID = 0; // set to 0 so another process can take queue spot
@@ -143,6 +147,7 @@ void dequeue(struct process_information *queue, int pid){
             break;
         }
     }
+    pthread_mutex_unlock(&queue_lock); // exit cs
 }
 
 // useful print function to print PCB in table format
@@ -172,7 +177,8 @@ int main(){
     pthread_t cpu_threads[NUM_CPU]; // array of consumer threads (cpus)
 
     // init mutex lock
-    if(pthread_mutex_init(&mutex_lock, NULL) != 0) {perror("Mutex initialization failed"); exit(EXIT_FAILURE);}
+    if(pthread_mutex_init(&queue_lock, NULL) != 0) {perror("Mutex initialization failed"); exit(EXIT_FAILURE);}
+    if(pthread_mutex_init(&process_lock, NULL) != 0) {perror("Mutex initialization failed"); exit(EXIT_FAILURE);}
 
     // create producer thread
     if(pthread_create(&producer_thread, NULL, producer_thread_function, NULL) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
@@ -204,7 +210,8 @@ int main(){
     // wait a second after threads join and clean-up
     sleep(1);
 
-    pthread_mutex_destroy(&mutex_lock);
+    pthread_mutex_destroy(&queue_lock);
+    pthread_mutex_destroy(&process_lock);
 
     printf("$$term$$\n");
 
@@ -235,7 +242,7 @@ void *producer_thread_function(){
                 process_data_copy.cpu_affinity = generate_int(0, 3);
             }
 
-            pthread_mutex_lock(&mutex_lock);
+            pthread_mutex_lock(&queue_lock);
 
             // pick a CPU; pick a queue; pick an index in queue
             struct core_queues *core = &cpu_cores[process_data_copy.cpu_affinity]; // pick the cpu
@@ -270,7 +277,7 @@ void *producer_thread_function(){
             ready_processes++;
             NUM_GENERATED++;
 
-            pthread_mutex_unlock(&mutex_lock);
+            pthread_mutex_unlock(&queue_lock);
 
             // start sleeping after ive rapid generated the first batch of 6 processes
             if(NUM_GENERATED > 5){
@@ -323,7 +330,7 @@ void *cpu_thread_function(void *arg){
             continue; // no ready processes found
         }
 
-        pthread_mutex_lock(&mutex_lock); // lock cs
+        pthread_mutex_lock(&process_lock); // lock cs
         // copy pcb data to temporary buffer
         temp_pcb = *pcb;
         dequeue(selected_queue, pcb->PID); // remove process from queue
@@ -338,7 +345,7 @@ void *cpu_thread_function(void *arg){
         temp_pcb.TIME_SLICE = calc_time_quantum(temp_pcb.STATIC_PRIORITY); // max cpu time
         temp_pcb.EXECUTION_TIME = generate_int(1,10); // how long process runs in cpu; in milliseconds
         temp_pcb.LAST_CPU = thread_index;
-        pthread_mutex_unlock(&mutex_lock); // exit cs
+        pthread_mutex_unlock(&process_lock); // exit cs
 
         // check type of scheduling
         if(temp_pcb.SCHED_POLICY == NORMAL){ // NORMAL
@@ -346,7 +353,7 @@ void *cpu_thread_function(void *arg){
 
             usleep(temp_pcb.TIME_SLICE * MILLISECOND_TO_MICROSECOND); // idk what this shud be..
 
-            pthread_mutex_lock(&mutex_lock); // enter cs
+            pthread_mutex_lock(&process_lock); // enter cs
             temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
             temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
             temp_pcb.SLEEP_AVG = calc_sleep_avg(temp_pcb.SLEEP_AVG, DELTA_TIME, temp_pcb.TIME_SLICE);
@@ -373,14 +380,14 @@ void *cpu_thread_function(void *arg){
                     enqueue(selected_queue, temp_pcb); // pop back in queue   
                 }
             }
-            pthread_mutex_unlock(&mutex_lock); // exit cs
+            pthread_mutex_unlock(&process_lock); // exit cs
 
         }else if(temp_pcb.SCHED_POLICY == RR){ // RR
 
             printf("[RR]: Process #%d running\n", temp_pcb.PID);
             usleep(temp_pcb.TIME_SLICE * MILLISECOND_TO_MICROSECOND); // how long the cpu is needed; assume its the time_slice for RR processes
 
-            pthread_mutex_lock(&mutex_lock); // enter cs
+            pthread_mutex_lock(&process_lock); // enter cs
             temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
             temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
 
@@ -392,7 +399,7 @@ void *cpu_thread_function(void *arg){
                 printf("[RR]: Process #%d finished time_slice! Enqueuing to previous queue...\n", temp_pcb.PID);
                 enqueue(selected_queue, temp_pcb); // pop back in queue
             }
-            pthread_mutex_unlock(&mutex_lock); // exit cs
+            pthread_mutex_unlock(&process_lock); // exit cs
 
         }else{ // FIFO
             /* FIFO tasks are non-preemptive; they run to completion, no iterations are needed */
@@ -401,12 +408,12 @@ void *cpu_thread_function(void *arg){
             usleep(temp_pcb.REMAIN_TIME * MILLISECOND_TO_MICROSECOND); // run to completion
 
             // all this is not necessary as 'dequeue' already got rid of the process from the queue; for testing
-            pthread_mutex_lock(&mutex_lock); // enter cs
+            pthread_mutex_lock(&process_lock); // enter cs
             temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
             temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
             printf("[FIFO]: Process #%d completed. Printing table format...\n", temp_pcb.PID);
             print_pcb(temp_pcb);
-            pthread_mutex_unlock(&mutex_lock); // exit cs
+            pthread_mutex_unlock(&process_lock); // exit cs
         }
     }
 
