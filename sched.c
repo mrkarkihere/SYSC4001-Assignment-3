@@ -120,8 +120,9 @@ long double calc_delta_time(struct timeval start, struct timeval end){
 // calculate the sleep_avg for the process; returns int
 int calc_sleep_avg(int sleep_avg, long double delta_time, int time_quantum){
     sleep_avg += delta_time / time_quantum - 1; 
+    printf("sleep_avg = %d, delta_time = %LF, time_quantum = %d\n", sleep_avg, delta_time, time_quantum);
     if(sleep_avg < 0) {
-        sleep_avg=0;
+        sleep_avg = 0;
     } else if( sleep_avg > MAX_SLEEP_AVG ){
         sleep_avg = MAX_SLEEP_AVG;
     }
@@ -338,7 +339,7 @@ void *cpu_thread_function(void *arg){
         // if its NORMAL scheduling and the task was blocked; record the time it was unblocked
         if(temp_pcb.SCHED_POLICY == NORMAL && temp_pcb.BLOCKED){
             gettimeofday(&UNBLOCKED_TIME, NULL); // record when the process was unblocked
-            DELTA_TIME = calc_delta_time(UNBLOCKED_TIME, temp_pcb.BLOCKED_TIME); // calculate time difference in milliseconds
+            DELTA_TIME = calc_delta_time(temp_pcb.BLOCKED_TIME, UNBLOCKED_TIME); // calculate time difference in milliseconds
         }
 
         // set values
