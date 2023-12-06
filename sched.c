@@ -364,6 +364,7 @@ void *cpu_thread_function(void *arg){
             if(temp_pcb.EXECUTION_TIME < temp_pcb.TIME_SLICE){
                 temp_pcb.BLOCKED = 1;
                 gettimeofday(&temp_pcb.BLOCKED_TIME, NULL); 
+                usleep(generate_int(100,600) * MILLISECOND_TO_MICROSECOND); // simulate blocking
             }
 
             // if 0 time remaining then process has ended
