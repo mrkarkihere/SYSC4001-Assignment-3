@@ -120,7 +120,6 @@ long double calc_delta_time(struct timeval start, struct timeval end){
 // calculate the sleep_avg for the process; returns int
 int calc_sleep_avg(int sleep_avg, long double delta_time, int time_quantum){
     sleep_avg += delta_time / time_quantum - 1; 
-    printf("sleep_avg = %d, delta_time = %LF, time_quantum = %d\n", sleep_avg, delta_time, time_quantum);
     if(sleep_avg < 0) {
         sleep_avg = 0;
     } else if( sleep_avg > MAX_SLEEP_AVG ){
@@ -361,15 +360,16 @@ void *cpu_thread_function(void *arg){
             temp_pcb.SLEEP_AVG = calc_sleep_avg(temp_pcb.SLEEP_AVG, DELTA_TIME, temp_pcb.TIME_SLICE);
             
             // process didn't use entire time slice
-            if(temp_pcb.EXECUTION_TIME < temp_pcb.TIME_SLICE){
+            if(temp_pcb.SCHED_POLICY == NORMAL && temp_pcb.EXECUTION_TIME < temp_pcb.TIME_SLICE){
                 temp_pcb.BLOCKED = 1;
                 gettimeofday(&temp_pcb.BLOCKED_TIME, NULL); 
-                usleep(generate_int(100,600) * MILLISECOND_TO_MICROSECOND); // simulate blocking
+                usleep(generate_int(100,600)); // simulate blocking; very short block for testing
             }
 
             // if 0 time remaining then process has ended
             if(temp_pcb.REMAIN_TIME == 0){
                 printf("[NORMAL]: Process #%d completed. Printing table format...\n", temp_pcb.PID);
+                temp_pcb.BLOCKED = 0;
                 print_pcb(temp_pcb);
 
             }else{ // process not done yet
