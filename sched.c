@@ -344,7 +344,8 @@ void *cpu_thread_function(void *arg){
 
         // set values
         temp_pcb.TIME_SLICE = calc_time_quantum(temp_pcb.STATIC_PRIORITY); // max cpu time
-        temp_pcb.EXECUTION_TIME = generate_int(1,10); // how long process runs in cpu; in milliseconds
+        temp_pcb.EXECUTION_TIME = generate_int(1,10) * 10; // how long process runs in cpu; in milliseconds
+        temp_pcb.EXECUTION_TIME = (temp_pcb.EXECUTION_TIME > temp_pcb.TIME_SLICE) ? temp_pcb.TIME_SLICE : temp_pcb.EXECUTION_TIME; // clamp value
         temp_pcb.LAST_CPU = thread_index;
         pthread_mutex_unlock(&process_lock); // exit cs
 
@@ -352,7 +353,7 @@ void *cpu_thread_function(void *arg){
         if(temp_pcb.SCHED_POLICY == NORMAL){ // NORMAL
             printf("[NORMAL]: Process #%d running\n", temp_pcb.PID);
 
-            usleep(temp_pcb.TIME_SLICE * MILLISECOND_TO_MICROSECOND); // idk what this shud be..
+            usleep(temp_pcb.EXECUTION_TIME * MILLISECOND_TO_MICROSECOND); // sleep the execution time for NORMAL processes
 
             pthread_mutex_lock(&process_lock); // enter cs
             temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
