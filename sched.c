@@ -367,7 +367,7 @@ void *cpu_thread_function(void *arg){
             }else{ // process not done yet
                 temp_pcb.DYNAMIC_PRIORITY = calc_dyanmic_priority(temp_pcb.DYNAMIC_PRIORITY, temp_pcb.SLEEP_AVG);
                 // if DP >= 130 then move to RQ2; else goes back to original queue
-                if(temp_pcb.DYNAMIC_PRIORITY >= 130){
+                if(temp_pcb.DYNAMIC_PRIORITY >= 130 ){
                     printf("[NORMAL]: Process #%d finished time_slice! DP has changed to %d, enqueuing to RQ2...\n", temp_pcb.PID, temp_pcb.DYNAMIC_PRIORITY);
                     enqueue(core->RQ_2, temp_pcb); // pop back in queue   
                 }else{
