@@ -1,7 +1,7 @@
 /**
- * @file lab11.c
+ * @file sched.c
  * @author Arun Karki
- * @date 2023-11-23
+ * @date 2023-12-05
  */
 
 #include <stdio.h>
