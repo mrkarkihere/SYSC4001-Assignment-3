@@ -11,27 +11,27 @@
 #include <sys/time.h>
 #include "parse_csv.h"
 
-#define NUM_CPU 4             // number of consumer threads
-#define MAX_QUEUE_PROCESS 100 // max of 100 processes per queue
-#define MILLISECOND_TO_MICROSECOND 1000 // times by * 1000 for the usleep() calls; assume all numbers used in base are in milliseconds
+#define NUM_CPU 4                         // number of consumer threads
+#define MAX_QUEUE_PROCESS 100             // max of 100 processes per queue
+#define MILLISECOND_TO_MICROSECOND 1000   // times by * 1000 for the usleep() calls; assume all numbers used in base are in milliseconds
 #define MAX(a, b) ((a) > (b) ? (a) : (b)) // find the larger number
 #define MIN(a, b) ((a) < (b) ? (a) : (b)) // find the smaller number
 
 // basic process information
 struct process_information{
-    int PID;                        // pid generated
-    int STATIC_PRIORITY;            // default = 120; shud be b/w 100-139, lower # = higher priority
-    int DYNAMIC_PRIORITY;           // changing priority value
-    int REMAIN_TIME;                // remainder execution time
-    int TIME_SLICE;                 // max amount of cpu time for process
-    int ACCU_TIME_SLICE;            // accumulated time slice
-    int LAST_CPU;                   // the thread id that the process last ran
-    int EXECUTION_TIME;             // actual cpu use time of process per iteration
-    int CPU_AFFINITY;               // which CPU does the process want
-    enum SchedulingType SCHED_POLICY; /* scheduling policy used for process */
-    int SLEEP_AVG;                  // average sleep time of the process
-    int BLOCKED; // 1 if the process is in a blocked state
-    struct timeval BLOCKED_TIME; // when process was blocked
+    int PID;                          // pid generated
+    int STATIC_PRIORITY;              // default = 120; shud be b/w 100-139, lower # = higher priority
+    int DYNAMIC_PRIORITY;             // changing priority value
+    int REMAIN_TIME;                  // remainder execution time
+    int TIME_SLICE;                   // max amount of cpu time for process
+    int ACCU_TIME_SLICE;              // accumulated time slice
+    int LAST_CPU;                     // the thread id that the process last ran
+    int EXECUTION_TIME;               // actual cpu use time of process per iteration
+    int CPU_AFFINITY;                 // which CPU does the process want
+    enum SchedulingType SCHED_POLICY; // scheduling policy used for process
+    int SLEEP_AVG;                    // average sleep time of the process
+    int BLOCKED;                      // 1 if the process is in a blocked state
+    struct timeval BLOCKED_TIME;      // when process was blocked
 };
 
 // ready queue structure
@@ -45,9 +45,9 @@ struct core_queues{
 pthread_mutex_t queue_lock;            // lock to do queue access
 pthread_mutex_t process_lock;          // lock to do process locks; when updating values
 struct core_queues cpu_cores[NUM_CPU]; // create N struct queues; each represents 1 core
-int ready_processes = 0;                 // TESTING: use this to stop the program once 0 processes are running
-int GENERATING_PCB = 1;                    // TESTING: value is 1 if producer is producing still
-int MAX_SLEEP_AVG = 10; // max sleep average (10 milliseconds)
+int ready_processes = 0;               // TESTING: use this to stop the program once 0 processes are running
+int GENERATING_PCB = 1;                // TESTING: value is 1 if producer is producing still
+int MAX_SLEEP_AVG = 10;                // max sleep average (10 milliseconds)
 
 // thread functions
 void *producer_thread_function();
@@ -55,37 +55,47 @@ void *cpu_thread_function(void *arg);
 
 // generate random numbers between [min, max] range
 int generate_int(int min, int max){
-    if (min >= max) {min = max;}
+    min = min >= max ? max : min;
     return (rand() % (max - min + 1)) + min;
 }
 
 // pick a ready queue depending on the priority
 int pick_ready_queue(int priority){
-    if(priority >= 0 && priority < 100) {return 0;} // RQ_0
-    else if(priority >= 100 && priority < 130) {return 1;} // RQ_1
-    else if (priority >= 130 && priority < 140) {return 2;} // RQ_2
-    else {perror("invalid priority"); exit(EXIT_FAILURE);}
+    if (priority >= 0 && priority < 100){
+        return 0;
+    } // RQ_0
+    else if(priority >= 100 && priority < 130){
+        return 1;
+    } // RQ_1
+    else if(priority >= 130 && priority < 140){
+        return 2;
+    } // RQ_2
+    else{
+        perror("invalid priority");
+        exit(EXIT_FAILURE);
+    }
 }
 
 // search the ready queue for an empty index and return it
-int find_index(struct process_information *queue) {
+int find_index(struct process_information *queue){
     int new_priority = queue->STATIC_PRIORITY; // priority of the new process to be inserted
     int i = 0;
 
     // find the correct index based on priority
-    for(i = 0; i < MAX_QUEUE_PROCESS; i++) {
-        if(queue[i].PID == 0 || new_priority < queue[i].STATIC_PRIORITY) {break;} // found new index
+    for(i = 0; i < MAX_QUEUE_PROCESS; i++){
+        if(queue[i].PID == 0 || new_priority < queue[i].STATIC_PRIORITY){
+            break;
+        } // found new index
     }
 
     // shift elements to make space for the new process
-    if (i < MAX_QUEUE_PROCESS - 1) {
+    if(i < MAX_QUEUE_PROCESS - 1){
         for(int j = MAX_QUEUE_PROCESS - 1; j > i; j--){
             queue[j] = queue[j - 1];
         }
-    }   
+    }
     return i; // return the index where the new process should be inserted
 }
-
 
 // find the first index of a ready process
 int find_ready_index(struct process_information *queue){
@@ -96,7 +106,7 @@ int find_ready_index(struct process_information *queue){
     }
     // return -1 here will cause the loop to continue and keep searching; awaiting processes to be added to queue
     // if no processes are found in any queue and no PCBs are being generated; then we end the simulation
-    return -1; 
+    return -1;
 }
 
 // calculate time quantum
@@ -119,10 +129,10 @@ long double calc_delta_time(struct timeval start, struct timeval end){
 
 // calculate the sleep_avg for the process; returns int
 int calc_sleep_avg(int sleep_avg, long double delta_time, int time_quantum){
-    sleep_avg += delta_time / time_quantum - 1; 
-    if(sleep_avg < 0) {
+    sleep_avg += delta_time / time_quantum - 1;
+    if(sleep_avg < 0){
         sleep_avg = 0;
-    } else if( sleep_avg > MAX_SLEEP_AVG ){
+    }else if(sleep_avg > MAX_SLEEP_AVG){
         sleep_avg = MAX_SLEEP_AVG;
     }
     return (int) sleep_avg;
@@ -142,7 +152,7 @@ void dequeue(struct process_information *queue, int pid){
     pthread_mutex_lock(&queue_lock); // enter cs
     for(int i = 0; i < MAX_QUEUE_PROCESS; i++){
         if(queue[i].PID == pid){
-            queue[i].PID = 0; // set to 0 so another process can take queue spot
+            queue[i].PID = 0;  // set to 0 so another process can take queue spot
             ready_processes--; // decrement the # of processes
             break;
         }
@@ -152,7 +162,7 @@ void dequeue(struct process_information *queue, int pid){
 
 // useful print function to print PCB in table format
 void print_pcb(struct process_information pcb){
-    printf("\n[THREAD_ID_%lu]: process_information = {\n", (unsigned long) pthread_self());
+    printf("\n[THREAD_ID_%lu]: process_information = {\n", (unsigned long)pthread_self());
     printf("\tPID = %d\n", pcb.PID);
     printf("\tSTATIC_PRIORITY = %d\n", pcb.STATIC_PRIORITY);
     printf("\tDYNAMIC_PRIORITY = %d\n", pcb.DYNAMIC_PRIORITY);
@@ -168,7 +178,7 @@ void print_pcb(struct process_information pcb){
 }
 
 int main(){
-    
+
     /* one thread = producer, multi-threads = consumers */
     srand(time(NULL));
 
@@ -177,21 +187,33 @@ int main(){
     pthread_t cpu_threads[NUM_CPU]; // array of consumer threads (cpus)
 
     // init mutex lock
-    if(pthread_mutex_init(&queue_lock, NULL) != 0) {perror("Mutex initialization failed"); exit(EXIT_FAILURE);}
-    if(pthread_mutex_init(&process_lock, NULL) != 0) {perror("Mutex initialization failed"); exit(EXIT_FAILURE);}
+    if(pthread_mutex_init(&queue_lock, NULL) != 0){
+        perror("Mutex initialization failed");
+        exit(EXIT_FAILURE);
+    }
+    if(pthread_mutex_init(&process_lock, NULL) != 0){
+        perror("Mutex initialization failed");
+        exit(EXIT_FAILURE);
+    }
 
     // create producer thread
-    if(pthread_create(&producer_thread, NULL, producer_thread_function, NULL) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
+    if(pthread_create(&producer_thread, NULL, producer_thread_function, NULL) != 0){
+        perror("Thread creation failed");
+        exit(EXIT_FAILURE);
+    }
 
     // create consumer threads
     for(int thread_index = 0; thread_index < NUM_CPU; thread_index++){
 
         // thread pointer
         pthread_t *c_thread = &cpu_threads[thread_index];
-        void *consumer_args = (void*) &thread_index;
+        void *consumer_args = (void *)&thread_index;
 
         // create consumer thread
-        if(pthread_create(c_thread, NULL, cpu_thread_function, consumer_args) != 0){perror("Thread creation failed"); exit(EXIT_FAILURE);}
+        if(pthread_create(c_thread, NULL, cpu_thread_function, consumer_args) != 0){
+            perror("Thread creation failed");
+            exit(EXIT_FAILURE);
+        }
 
         // prevent mismatches
         usleep(50);
@@ -204,8 +226,11 @@ int main(){
         pthread_join(*c_thread, NULL); // takes value, not the pointer
     }
 
-    // wait for producer to return; idk if necessary atm
-    if(pthread_join(producer_thread, &thread_return) != 0) {perror("Thread join failed"); exit(EXIT_FAILURE);}
+    // wait for producer to return
+    if(pthread_join(producer_thread, &thread_return) != 0){
+        perror("Thread join failed");
+        exit(EXIT_FAILURE);
+    }
 
     // wait a second after threads join and clean-up
     sleep(1);
@@ -221,11 +246,13 @@ int main(){
 // producer thread
 void *producer_thread_function(){
 
-    printf("[PRODUCER_ID_%lu]: thread function invoked\n", (unsigned long) pthread_self());
+    printf("[PRODUCER_ID_%lu]: thread function invoked\n", (unsigned long)pthread_self());
 
     // opening csv file
     FILE *file = fopen("pcb_data.csv", "r");
-    if(file == NULL) {perror("Error opening file");}
+    if(file == NULL){
+        perror("Error opening file");
+    }
 
     // store data read from csv file in here
     struct ProcessData process_data_copy;
@@ -250,13 +277,14 @@ void *producer_thread_function(){
             struct process_information *pcb;
             int index; // index in queue
 
-            if(ready_queue == 0){               // RO
+            if(ready_queue == 0){ // RO
                 index = find_index((core->RQ_0));
                 pcb = &(core->RQ_0)[index];
-            }else if(ready_queue == 1){         // R1
+            }
+            else if(ready_queue == 1){ // R1
                 index = find_index((core->RQ_1));
                 pcb = &(core->RQ_1)[index];
-            }else{                              // R2
+            }else{ // R2
                 index = find_index((core->RQ_2));
                 pcb = &(core->RQ_2)[index];
             }
@@ -283,7 +311,8 @@ void *producer_thread_function(){
             if(NUM_GENERATED > 5){
                 usleep(generate_int(100, 600) * MILLISECOND_TO_MICROSECOND); // sleep 100us-600 ms per each read
             }
-        }else{
+        }
+        else{
             break;
         }
     }
@@ -298,8 +327,6 @@ void *producer_thread_function(){
 void *cpu_thread_function(void *arg){
 
     int thread_index = *(int *)arg;
-    //printf("[CONSUMER_ID_%lu]: thread #%d invoked\n", (unsigned long) pthread_self(), thread_index);
-
     struct core_queues *core = &cpu_cores[thread_index];
 
     // while there's a ready process OR processes are being created
@@ -337,13 +364,13 @@ void *cpu_thread_function(void *arg){
 
         // if its NORMAL scheduling and the task was blocked; record the time it was unblocked
         if(temp_pcb.SCHED_POLICY == NORMAL && temp_pcb.BLOCKED){
-            gettimeofday(&UNBLOCKED_TIME, NULL); // record when the process was unblocked
+            gettimeofday(&UNBLOCKED_TIME, NULL);                                 // record when the process was unblocked
             DELTA_TIME = calc_delta_time(temp_pcb.BLOCKED_TIME, UNBLOCKED_TIME); // calculate time difference in milliseconds
         }
 
         // set values
-        temp_pcb.TIME_SLICE = calc_time_quantum(temp_pcb.STATIC_PRIORITY); // max cpu time
-        temp_pcb.EXECUTION_TIME = generate_int(1,10) * 10; // how long process runs in cpu; in milliseconds
+        temp_pcb.TIME_SLICE = calc_time_quantum(temp_pcb.STATIC_PRIORITY);                                                         // max cpu time
+        temp_pcb.EXECUTION_TIME = generate_int(1, 10) * 10;                                                                        // how long process runs in cpu; in milliseconds
         temp_pcb.EXECUTION_TIME = (temp_pcb.EXECUTION_TIME > temp_pcb.TIME_SLICE) ? temp_pcb.TIME_SLICE : temp_pcb.EXECUTION_TIME; // clamp value
         temp_pcb.LAST_CPU = thread_index;
         pthread_mutex_unlock(&process_lock); // exit cs
@@ -358,12 +385,12 @@ void *cpu_thread_function(void *arg){
             temp_pcb.ACCU_TIME_SLICE += temp_pcb.TIME_SLICE;
             temp_pcb.REMAIN_TIME = (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE >= 0) ? (temp_pcb.REMAIN_TIME - temp_pcb.TIME_SLICE) : 0;
             temp_pcb.SLEEP_AVG = calc_sleep_avg(temp_pcb.SLEEP_AVG, DELTA_TIME, temp_pcb.TIME_SLICE);
-            
+
             // process didn't use entire time slice
             if(temp_pcb.SCHED_POLICY == NORMAL && temp_pcb.EXECUTION_TIME < temp_pcb.TIME_SLICE){
                 temp_pcb.BLOCKED = 1;
-                gettimeofday(&temp_pcb.BLOCKED_TIME, NULL); 
-                usleep(generate_int(100,600)); // simulate blocking; very short block for testing
+                gettimeofday(&temp_pcb.BLOCKED_TIME, NULL);
+                usleep(generate_int(100, 600)); // simulate blocking; very short block for testing
             }
 
             // if 0 time remaining then process has ended
@@ -371,21 +398,20 @@ void *cpu_thread_function(void *arg){
                 printf("[NORMAL]: Process #%d completed. Printing table format...\n", temp_pcb.PID);
                 temp_pcb.BLOCKED = 0;
                 print_pcb(temp_pcb);
-
             }else{ // process not done yet
                 temp_pcb.DYNAMIC_PRIORITY = calc_dyanmic_priority(temp_pcb.DYNAMIC_PRIORITY, temp_pcb.SLEEP_AVG);
                 // if DP >= 130 then move to RQ2; else goes back to original queue
-                if(temp_pcb.DYNAMIC_PRIORITY >= 130 ){
+                if(temp_pcb.DYNAMIC_PRIORITY >= 130){
                     printf("[NORMAL]: Process #%d finished time_slice! Dynamic Priority is %d, enqueuing to RQ2...\n", temp_pcb.PID, temp_pcb.DYNAMIC_PRIORITY);
-                    enqueue(core->RQ_2, temp_pcb); // pop back in queue   
+                    enqueue(core->RQ_2, temp_pcb); // pop back in queue
                 }else{
                     printf("[NORMAL]: Process #%d finished time_slice! Enqueuing to previous queue...\n", temp_pcb.PID);
-                    enqueue(selected_queue, temp_pcb); // pop back in queue   
+                    enqueue(selected_queue, temp_pcb); // pop back in queue
                 }
             }
             pthread_mutex_unlock(&process_lock); // exit cs
-
-        }else if(temp_pcb.SCHED_POLICY == RR){ // RR
+        }
+        else if(temp_pcb.SCHED_POLICY == RR){ // RR
 
             printf("[RR]: Process #%d running\n", temp_pcb.PID);
             usleep(temp_pcb.TIME_SLICE * MILLISECOND_TO_MICROSECOND); // how long the cpu is needed; assume its the time_slice for RR processes
@@ -403,8 +429,8 @@ void *cpu_thread_function(void *arg){
                 enqueue(selected_queue, temp_pcb); // pop back in queue
             }
             pthread_mutex_unlock(&process_lock); // exit cs
-
-        }else{ // FIFO
+        }
+        else{ // FIFO
             /* FIFO tasks are non-preemptive; they run to completion, no iterations are needed */
 
             printf("[FIFO]: Process #%d running\n", temp_pcb.PID);
